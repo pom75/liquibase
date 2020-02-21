@@ -1,16 +1,49 @@
+/**
+ *  Copyright Murex S.A.S., 2003-2020. All Rights Reserved.
+ *
+ *  This software program is proprietary and confidential to Murex S.A.S and its affiliates ("Murex") and, without limiting the generality of the foregoing reservation of rights, shall not be accessed, used, reproduced or distributed without the
+ *  express prior written consent of Murex and subject to the applicable Murex licensing terms. Any modification or removal of this copyright notice is expressly prohibited.
+ */
 package liquibase.sqlgenerator.core;
+
+import java.util.function.BiFunction;
 
 import liquibase.database.Database;
 import liquibase.database.core.*;
+
 import liquibase.exception.ValidationErrors;
+
 import liquibase.sql.Sql;
 import liquibase.sql.UnparsedSql;
+
 import liquibase.sqlgenerator.SqlGeneratorChain;
+
 import liquibase.statement.core.DropDefaultValueStatement;
+
 import liquibase.structure.core.Column;
 import liquibase.structure.core.Table;
 
+
 public class DropDefaultValueGenerator extends AbstractSqlGenerator<DropDefaultValueStatement> {
+
+    //~ ----------------------------------------------------------------------------------------------------------------
+    //~ Static fields/initializers
+    //~ ----------------------------------------------------------------------------------------------------------------
+
+    public static BiFunction DROP_DF_MSSQL = (tableName, columnName) -> {
+        return "DECLARE @sql [nvarchar](MAX)\r\n" +
+            "SELECT @sql = N'ALTER TABLE " + tableName + " DROP CONSTRAINT ' + QUOTENAME([df].[name]) " +
+            "FROM [sys].[columns] AS [c] " +
+            "INNER JOIN [sys].[default_constraints] AS [df] " +
+            "ON [df].[object_id] = [c].[default_object_id] " +
+            "WHERE [c].[object_id] = OBJECT_ID(N'" + tableName + "') " +
+            "AND [c].[name] = N'" + columnName + "'\r\n" +
+            "EXEC sp_executesql @sql";
+    };
+
+    //~ ----------------------------------------------------------------------------------------------------------------
+    //~ Methods
+    //~ ----------------------------------------------------------------------------------------------------------------
 
     @Override
     public boolean supports(DropDefaultValueStatement statement, Database database) {
@@ -27,7 +60,6 @@ public class DropDefaultValueGenerator extends AbstractSqlGenerator<DropDefaultV
             validationErrors.checkRequiredField("columnDataType", dropDefaultValueStatement.getColumnDataType());
         }
 
-
         return validationErrors;
     }
 
@@ -36,40 +68,33 @@ public class DropDefaultValueGenerator extends AbstractSqlGenerator<DropDefaultV
         String sql;
         String escapedTableName = database.escapeTableName(statement.getCatalogName(), statement.getSchemaName(), statement.getTableName());
         if (database instanceof MSSQLDatabase) {
-            sql =
-                    "DECLARE @sql [nvarchar](MAX)\r\n" +
-                    "SELECT @sql = N'ALTER TABLE " + database.escapeStringForDatabase(escapedTableName) + " DROP CONSTRAINT ' + QUOTENAME([df].[name]) " +
-                    "FROM [sys].[columns] AS [c] " +
-                    "INNER JOIN [sys].[default_constraints] AS [df] " +
-                    "ON [df].[object_id] = [c].[default_object_id] " +
-                    "WHERE [c].[object_id] = OBJECT_ID(N'" + database.escapeStringForDatabase(escapedTableName) +  "') " +
-                    "AND [c].[name] = N'" + database.escapeStringForDatabase(statement.getColumnName()) +  "'\r\n" +
-                    "EXEC sp_executesql @sql";
+            sql = (String) DROP_DF_MSSQL.apply(database.escapeStringForDatabase(escapedTableName), database.escapeStringForDatabase(statement.getColumnName()));
         } else if (database instanceof MySQLDatabase) {
             sql = "ALTER TABLE " + escapedTableName + " ALTER " + database.escapeColumnName(statement.getCatalogName(), statement.getSchemaName(), statement.getTableName(), statement.getColumnName()) + " DROP DEFAULT";
         } else if (database instanceof OracleDatabase) {
             sql = "ALTER TABLE " + escapedTableName + " MODIFY " + database.escapeColumnName(statement.getCatalogName(), statement.getSchemaName(), statement.getTableName(), statement.getColumnName()) + " DEFAULT NULL";
         } else if (database instanceof SybaseDatabase) {
-             sql = "ALTER TABLE " + escapedTableName + " REPLACE " + database.escapeColumnName(statement.getCatalogName(), statement.getSchemaName(), statement.getTableName(), statement.getColumnName()) + " DEFAULT NULL";
+            sql = "ALTER TABLE " + escapedTableName + " REPLACE " + database.escapeColumnName(statement.getCatalogName(), statement.getSchemaName(), statement.getTableName(), statement.getColumnName()) + " DEFAULT NULL";
         } else if (database instanceof SybaseASADatabase) {
             sql = "ALTER TABLE " + escapedTableName + " ALTER " + database.escapeColumnName(statement.getCatalogName(), statement.getSchemaName(), statement.getTableName(), statement.getColumnName()) + " DEFAULT NULL";
         } else if (database instanceof DerbyDatabase) {
-            sql = "ALTER TABLE " + escapedTableName + " ALTER COLUMN  " + database.escapeColumnName(statement.getCatalogName(), statement.getSchemaName(), statement.getTableName(), statement.getColumnName()) + " WITH DEFAULT NULL";
+            sql = "ALTER TABLE " + escapedTableName + " ALTER COLUMN  " + database.escapeColumnName(statement.getCatalogName(), statement.getSchemaName(), statement.getTableName(), statement.getColumnName()) +
+                " WITH DEFAULT NULL";
         } else if (database instanceof InformixDatabase) {
-        	/*
-        	 * TODO If dropped from a not null column the not null constraint will be dropped, too.
-        	 * If the column is "NOT NULL" it has to be added behind the datatype.
-        	 */
-        	sql = "ALTER TABLE " + escapedTableName + " MODIFY (" + database.escapeColumnName(statement.getCatalogName(), statement.getSchemaName(), statement.getTableName(), statement.getColumnName()) + " " + statement.getColumnDataType() + ")";
+            /*
+             * TODO If dropped from a not null column the not null constraint will be dropped, too.
+             * If the column is "NOT NULL" it has to be added behind the datatype.
+             */
+            sql = "ALTER TABLE " + escapedTableName + " MODIFY (" + database.escapeColumnName(statement.getCatalogName(), statement.getSchemaName(), statement.getTableName(), statement.getColumnName()) + " " +
+                statement.getColumnDataType() + ")";
         } else if (database instanceof AbstractDb2Database) {
             sql = "ALTER TABLE " + escapedTableName + " ALTER COLUMN " + database.escapeColumnName(statement.getCatalogName(), statement.getSchemaName(), statement.getTableName(), statement.getColumnName()) + " DROP DEFAULT";
         } else {
-            sql = "ALTER TABLE " + escapedTableName + " ALTER COLUMN  " + database.escapeColumnName(statement.getCatalogName(), statement.getSchemaName(), statement.getTableName(), statement.getColumnName()) + " SET DEFAULT NULL";
+            sql = "ALTER TABLE " + escapedTableName + " ALTER COLUMN  " + database.escapeColumnName(statement.getCatalogName(), statement.getSchemaName(), statement.getTableName(), statement.getColumnName()) +
+                " SET DEFAULT NULL";
         }
 
-        return new Sql[] {
-                new UnparsedSql(sql, getAffectedColumn(statement))
-        };
+        return new Sql[] { new UnparsedSql(sql, getAffectedColumn(statement)) };
     }
 
     protected Column getAffectedColumn(DropDefaultValueStatement statement) {

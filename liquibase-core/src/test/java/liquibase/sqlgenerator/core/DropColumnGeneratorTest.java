@@ -1,36 +1,71 @@
+/**
+ *  Copyright Murex S.A.S., 2003-2020. All Rights Reserved.
+ *
+ *  This software program is proprietary and confidential to Murex S.A.S and its affiliates ("Murex") and, without limiting the generality of the foregoing reservation of rights, shall not be accessed, used, reproduced or distributed without the
+ *  express prior written consent of Murex and subject to the applicable Murex licensing terms. Any modification or removal of this copyright notice is expressly prohibited.
+ */
 package liquibase.sqlgenerator.core;
-
-import liquibase.database.core.MySQLDatabase;
-import liquibase.sql.Sql;
-import liquibase.sqlgenerator.AbstractSqlGeneratorTest;
-import liquibase.sqlgenerator.MockSqlGeneratorChain;
-import liquibase.statement.core.DropColumnStatement;
-import org.junit.Assert;
-import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import liquibase.database.core.MSSQLDatabase;
+import liquibase.database.core.MySQLDatabase;
+
+import liquibase.sql.Sql;
+
+import liquibase.sqlgenerator.AbstractSqlGeneratorTest;
+import liquibase.sqlgenerator.MockSqlGeneratorChain;
+
+import liquibase.statement.core.DropColumnStatement;
+
+import org.junit.Assert;
 import static org.junit.Assert.assertTrue;
+import org.junit.Test;
+
 
 public class DropColumnGeneratorTest extends AbstractSqlGeneratorTest<DropColumnStatement> {
+
+    //~ ----------------------------------------------------------------------------------------------------------------
+    //~ Constructors
+    //~ ----------------------------------------------------------------------------------------------------------------
 
     public DropColumnGeneratorTest() throws Exception {
         super(new DropColumnGenerator());
     }
 
-    @Override
-    protected DropColumnStatement createSampleSqlStatement() {
-        return new DropColumnStatement(null, null, "TEST_TABLE", "test_col");
+    //~ ----------------------------------------------------------------------------------------------------------------
+    //~ Methods
+    //~ ----------------------------------------------------------------------------------------------------------------
+
+    @Test
+    public void testDropMultipleColumnsMSSQL() {
+        DropColumnStatement drop = new DropColumnStatement(Arrays.asList(new DropColumnStatement(null, null, "TEST_TABLE", "col1"), new DropColumnStatement(null, null, "TEST_TABLE", "col2")));
+
+        Assert.assertFalse(generatorUnderTest.validate(drop, new MSSQLDatabase(), new MockSqlGeneratorChain()).hasErrors());
+        Sql[] sql = generatorUnderTest.generateSql(drop, new MSSQLDatabase(), new MockSqlGeneratorChain());
+        Assert.assertEquals(4, sql.length);
+        Assert.assertTrue(sql[0].toSql().contains("TEST_TABLE") && sql[0].toSql().contains("col1"));
+        Assert.assertEquals("ALTER TABLE TEST_TABLE DROP COLUMN col1", sql[1].toSql());
+        Assert.assertTrue(sql[2].toSql().contains("TEST_TABLE") && sql[2].toSql().contains("col2"));
+        Assert.assertEquals("ALTER TABLE TEST_TABLE DROP COLUMN col2", sql[3].toSql());
+    }
+
+    @Test
+    public void testDropSimpleColumnsMSSQL() {
+        DropColumnStatement drop = new DropColumnStatement(Arrays.asList(new DropColumnStatement(null, null, "TEST_TABLE", "col1")));
+
+        Assert.assertFalse(generatorUnderTest.validate(drop, new MSSQLDatabase(), new MockSqlGeneratorChain()).hasErrors());
+        Sql[] sql = generatorUnderTest.generateSql(drop, new MSSQLDatabase(), new MockSqlGeneratorChain());
+        Assert.assertEquals(2, sql.length);
+        Assert.assertTrue(sql[0].toSql().contains("TEST_TABLE") && sql[0].toSql().contains("col1"));
+        Assert.assertEquals("ALTER TABLE TEST_TABLE DROP COLUMN col1", sql[1].toSql());
     }
 
     @Test
     public void testDropMultipleColumnsMySQL() {
-        DropColumnStatement drop = new DropColumnStatement(Arrays.asList(
-            new DropColumnStatement(null, null, "TEST_TABLE", "col1"),
-            new DropColumnStatement(null, null, "TEST_TABLE", "col2")
-        ));
+        DropColumnStatement drop = new DropColumnStatement(Arrays.asList(new DropColumnStatement(null, null, "TEST_TABLE", "col1"), new DropColumnStatement(null, null, "TEST_TABLE", "col2")));
 
         Assert.assertFalse(generatorUnderTest.validate(drop, new MySQLDatabase(), new MockSqlGeneratorChain()).hasErrors());
         Sql[] sql = generatorUnderTest.generateSql(drop, new MySQLDatabase(), new MockSqlGeneratorChain());
@@ -38,9 +73,14 @@ public class DropColumnGeneratorTest extends AbstractSqlGeneratorTest<DropColumn
         Assert.assertEquals("ALTER TABLE TEST_TABLE DROP col1, DROP col2", sql[0].toSql());
 
         List<String> actualNames = sql[0].getAffectedDatabaseObjects().stream().map(o -> o.toString()).collect(Collectors.toList());
-        List<String> expectedNames = Arrays.asList(new String[]{"TEST_TABLE.col1", "TEST_TABLE.col2", "TEST_TABLE", "DEFAULT"});
+        List<String> expectedNames = Arrays.asList(new String[] { "TEST_TABLE.col1", "TEST_TABLE.col2", "TEST_TABLE", "DEFAULT" });
         assertTrue(actualNames.containsAll(expectedNames));
         assertTrue(expectedNames.containsAll(actualNames));
+    }
+
+    @Override
+    protected DropColumnStatement createSampleSqlStatement() {
+        return new DropColumnStatement(null, null, "TEST_TABLE", "test_col");
     }
 
 ////    @Test
